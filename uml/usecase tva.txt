@@ -1,0 +1,24 @@
+@startuml
+
+skin rose
+
+title Gestion TVA
+
+package Application {
+  package "Page d'accueil" as Accueil {
+    usecase "Consulter TVA" as UC0
+  }
+  
+  package System1 {
+    usecase "Calculer TVA" as SUC1
+  }
+}
+
+actor System
+actor User
+
+User -right-> UC0
+(UC0) .-> (SUC1) : include
+System -left-> SUC1
+
+@enduml

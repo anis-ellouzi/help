@@ -1,0 +1,119 @@
+@startuml
+
+skin rose
+
+title "Sequence"
+
+actor User
+boundary "Application" as Application
+control "API" as API
+database MySQL
+
+User -> Application : Consulter les facturations
+
+group Consulter une facture
+    User -> Application : Click Consulter
+    activate Application
+    Application -> API : Obtenir facture
+    API -> MySQL : Lire
+    
+    MySQL --> API : Retour
+    API --> Application : Retour
+    deactivate Application
+end
+
+group Modifier une facture
+    User -> Application : Click Modifier
+    activate Application
+    Application -> API : Obtenir facture
+    API -> MySQL : Obtenir facture
+    MySQL --> API : Retour
+    API --> Application : Retour
+    User --> Application : Modifier et valider
+    Application -> API : Enregister facture
+    API -> MySQL : Enregister
+    MySQL --> API : Retour
+    API --> Application : Retour
+    Application -> Application : Afficher message succés
+    deactivate Application
+end
+
+group Supprimer une facture
+    User -> Application : Click Supprimer
+    activate Application
+    Application -> Application : Afficher alerte
+    User --> Application : Valider
+    Application -> API : Supprimer facture
+    API -> MySQL : Supprimer facture
+    MySQL --> API : Retour
+    API --> Application : Retour
+    Application -> Application : Afficher message succés
+    deactivate Application
+end
+
+group Ajouter une facture
+    User -> Application : Click Ajouter
+    activate Application
+    Application -> Application : Afficher écran ajout
+    User --> Application : Saisir et Valider
+    API -> MySQL : Enregister
+    MySQL --> API : Retour
+    API --> Application : Retour
+    Application -> Application : Afficher message succés
+    deactivate Application
+end
+
+group Dupliquer une facture
+    User -> Application : Click Dupliquer
+    activate Application
+    Application -> API : Dupliquer facture
+    API -> MySQL : Enregister
+    MySQL --> API : Retour
+    API --> Application : Retour
+    Application -> Application : Afficher message succés
+    deactivate Application
+end
+
+group Imprimer une facture
+    User -> Application : Click Imprimer
+    activate Application
+    Application -> API : Générer PDF
+    Application -> Application : Ouvrir PDF
+    deactivate Application
+end
+
+group Emettre une facture
+    User -> Application : Click Emettre
+    activate Application
+    Application -> API : Obtenir facture
+    API -> MySQL : Obtenir facture
+    MySQL --> API : Retour
+    API --> Application : Retour
+    Application -> API : Générer PDF
+    Application -> Application : Ouvrir client mail
+    deactivate Application
+end
+
+group Payer une facture
+    User -> Application : Click Payer
+    activate Application
+    Application -> API : Modifier facture
+    API -> MySQL : Enregister
+    MySQL --> API : Retour
+    API --> Application : Retour
+    Application -> Application : Afficher message succés
+    deactivate Application
+end
+
+group Emettre une facture non payé
+    User -> Application : Click Alerter
+    activate Application
+    Application -> API : Obtenir facture
+    API -> MySQL : Obtenir facture
+    MySQL --> API : Retour
+    API --> Application : Retour
+    Application -> Application : Ouvrir client mail
+    deactivate Application
+end
+
+@enduml

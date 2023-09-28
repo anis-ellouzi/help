@@ -1,0 +1,49 @@
+@startuml
+
+skin rose
+
+title Gérer les factures
+
+package Application {
+  package Facturations {
+    usecase "Gérer les factures" as UC0
+    usecase "Consulter" as UC1
+    usecase "Ajouter" as UC2
+    usecase "Modifier" as UC3
+    usecase "Supprimer" as UC4
+    usecase "Dupliquer" as UC5
+    usecase "Imprimer" as UC6
+    usecase "Emettre" as UC7
+    usecase "Payer" as UC8
+    usecase "Emettre retard" as UC9
+  }
+  
+  package Mail {
+    usecase "Envoyer mail facture payé" as SUC1
+    usecase "Envoyer mail facture non payé" as SUC2
+  }
+}
+
+actor System
+actor User
+
+
+User -right-> UC0
+(UC0) .-up-> (UC1) : include
+(UC0) .up-> (UC2) : include
+(UC0) .up-> (UC3) : include
+(UC0) .up-> (UC4) : include
+(UC0) .right-> (UC5) : include
+(UC0) .down-> (UC6) : include
+(UC0) .down-> (UC7) : include
+(UC0) .down-> (UC8) : include
+(UC0) .down-> (UC9) : include
+
+
+(UC7) .down-> (SUC1) : extends
+(UC9) .down-> (SUC2) : extends
+
+System -left-> SUC1
+System -left-> SUC2
+
+@enduml
