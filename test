@@ -1,0 +1,22 @@
+Système de Gestion d'Accès
+Le système de gestion d'accès repose sur deux tables principales : la table de profil et la table d'accès.
+
+Table de Profil
+La table de profil contient les informations fondamentales concernant les utilisateurs et leurs permissions. Chaque profil est caractérisé par :
+
+Code : Identifiant unique du profil.
+Ressource : La ressource spécifique à laquelle le profil est associé.
+Ordre de Lecture : Indique la priorité ou l'ordre d'accès pour ce profil.
+Niveau du Profil : Le niveau de permission ou d'autorisation de ce profil.
+Table d'Accès
+La table d'accès relie les codes de fonctionnalité (ou de tâche) aux profils autorisés à y accéder. Chaque entrée dans cette table comprend :
+
+Code Fonction : Identifiant unique de la fonctionnalité ou de la tâche.
+Profil ayant Accès : Le profil autorisé à utiliser cette fonctionnalité.
+Vérification d'Accès
+Pour déterminer l'accès d'un utilisateur à une fonctionnalité donnée, un processus de vérification est effectué. Ce processus vérifie deux aspects principaux :
+
+Accès à la Fonctionnalité : Vérification si l'utilisateur a accès à la fonctionnalité spécifique en consultant la table d'accès.
+Comparaison des Profils : En cas d'accès autorisé, une comparaison des niveaux de profil peut être effectuée pour déterminer si l'utilisateur a un niveau inférieur, égal ou supérieur à d'autres profils autorisés.
+Cette approche permet une gestion fine des autorisations, en attribuant des niveaux de permissions variés aux profils et en contrôlant l'accès aux fonctionnalités en fonction de ces profils.
+
