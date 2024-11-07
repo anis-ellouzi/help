@@ -1,0 +1,169 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
+using System.Reflection.Emit;
+
+namespace MockingWithRespect
+{
+    public class MockMe<TType> where TType : class
+    {
+        private TypeBuilder typeBuilder;
+        private const string AssemblyName = "MockingWithRespect.Mocks";
+
+        private static readonly AssemblyBuilder MocksAssembly =
+            AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(AssemblyName), AssemblyBuilderAccess.Run);
+
+        private static readonly ModuleBuilder MocksModule = MocksAssembly.DefineDynamicModule(AssemblyName);
+
+        private Dictionary<MethodBase, Delegate> implementations = new();
+
+        public MockMe()
+        {
+            // Concrete types can be mocked without the interface constraint.
+            typeBuilder = MocksModule.DefineType($"MockMe{Guid.NewGuid().ToString().Replace('-', '0')}",
+                TypeAttributes.Class, typeof(MockBase));
+            typeBuilder.AddInterfaceImplementation(typeof(TType));
+
+            ImplementMethods();
+
+            // Create the instance without calling any constructor
+            Instance = CreateInstance();
+        }
+
+        private void ImplementMethods()
+        {
+            var methods = typeof(TType).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.InvokeMethod);
+
+            var isImplementedMethod = typeof(MockBase).GetMethod("IsImplemented", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            foreach (var concreteMethod in methods)
+            {
+                var parameters = concreteMethod.GetParameters().Select(info => info.ParameterType).ToArray();
+                var methodBuilder = typeBuilder.DefineMethod(concreteMethod.Name,
+                    MethodAttributes.Public
+                    | MethodAttributes.Virtual
+                    | MethodAttributes.NewSlot
+                    | MethodAttributes.Final,
+                    concreteMethod.ReturnType, parameters);
+
+                var ilGenerator = methodBuilder.GetILGenerator();
+                var localDelegate = ilGenerator.DeclareLocal(typeof(Delegate));
+
+                // Check if method is mocked or if we should return default value
+                var fallbackWithDefault = ilGenerator.DefineLabel();
+                ilGenerator.Emit(OpCodes.Ldarg_0); // "this"
+                ilGenerator.Emit(OpCodes.Ldtoken, concreteMethod);
+                ilGenerator.Emit(OpCodes.Call, typeof(MethodBase).GetMethod("GetMethodFromHandle", new[] { typeof(RuntimeMethodHandle) }));
+                ilGenerator.Emit(OpCodes.Stloc_0); // Store MethodBase in local
+
+                ilGenerator.Emit(OpCodes.Ldarg_0); // "this"
+                ilGenerator.Emit(OpCodes.Ldloc_0); // MethodBase
+                ilGenerator.Emit(OpCodes.Call, isImplementedMethod); // Check if mocked
+                ilGenerator.Emit(OpCodes.Brfalse_S, fallbackWithDefault); // If not mocked, use default fallback
+
+                ilGenerator.Emit(OpCodes.Ldloc_0); // Load delegate to call dynamic invoke
+                ilGenerator.Emit(OpCodes.Call, typeof(Delegate).GetMethod(nameof(Delegate.DynamicInvoke), new[] { typeof(object[]) }));
+                ilGenerator.Emit(OpCodes.Unbox_Any, concreteMethod.ReturnType); // Unbox and return the result
+                ilGenerator.Emit(OpCodes.Ret);
+
+                // Default return value when method isn't mocked
+                ilGenerator.MarkLabel(fallbackWithDefault);
+                ilGenerator.Emit(OpCodes.Ldloca_S, localDelegate);
+                ilGenerator.Emit(OpCodes.Initobj, concreteMethod.ReturnType); // Initialize with default
+                ilGenerator.Emit(OpCodes.Ldloc_1);
+                ilGenerator.Emit(OpCodes.Ret); // Return the default value
+            }
+        }
+
+        // Actual instance of the Mocked TType (concrete class)
+        public TType Instance { get; }
+
+        private TType CreateInstance()
+        {
+            // Create the mocked type without invoking a constructor, directly using reflection
+            var dynamicType = typeBuilder.CreateType();
+
+            // Create an instance using a constructorless approach.
+            var instance = (TType)Activator.CreateInstance(dynamicType);
+
+            // Initialize fields or properties (if needed)
+            InitializeFields(instance);
+
+            return instance;
+        }
+
+        private void InitializeFields(TType instance)
+        {
+            // If needed, manually initialize the fields or properties.
+            var fields = typeof(TType).GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
+            foreach (var field in fields)
+            {
+                // Set the field to a default value
+                field.SetValue(instance, GetDefaultValue(field.FieldType));
+            }
+        }
+
+        private object GetDefaultValue(Type type)
+        {
+            // Return default value for the type, can be enhanced for specific types
+            return type.IsValueType ? Activator.CreateInstance(type) : null;
+        }
+
+        public void Verify(Expression<Action<TType>> methodCall, int count = 1)
+        {
+            if (methodCall.Body is not MethodCallExpression methodCallExpression)
+            {
+                throw new InvalidOperationException("Only methods can be verified!");
+            }
+
+            var methodInfo = methodCallExpression.Method;
+            var mockBase = Instance as MockBase;
+
+            var callsCount = mockBase!.GetCallsCount(methodInfo);
+
+            if (callsCount != count)
+            {
+                throw new InvalidOperationException($"Mock of type {typeof(TType)} expected to have {count} calls of the method {methodInfo} but got {callsCount}");
+            }
+        }
+
+        public void Setup<TResult>(Expression<Func<TType, TResult>> memberCall,
+            Expression<Func<TResult>> implementation)
+        {
+            if (memberCall.Body is MethodCallExpression methodCallExpression)
+            {
+                // Handle method setup
+                var methodInfo = methodCallExpression.Method;
+                implementations[methodInfo] = implementation.Compile();
+            }
+            else if (memberCall.Body is MemberExpression memberExpression)
+            {
+                // Handle property setup
+                var propertyInfo = memberExpression.Member as PropertyInfo;
+                if (propertyInfo == null)
+                    throw new InvalidOperationException("Expression must refer to a property.");
+
+                // If it's a property, we'll mock the getter.
+                if (propertyInfo.CanRead)
+                {
+                    var propertyGetterMethod = propertyInfo.GetGetMethod();
+                    implementations[propertyGetterMethod] = implementation.Compile();
+                }
+
+                // Optionally, we could also support setter mocking by handling the SetMethod.
+                if (propertyInfo.CanWrite)
+                {
+                    var propertySetterMethod = propertyInfo.GetSetMethod();
+                    var setterImplementation = Expression.Lambda<Action<TResult>>(implementation.Body, implementation.Parameters);
+                    implementations[propertySetterMethod] = setterImplementation.Compile();
+                }
+            }
+            else
+            {
+                throw new InvalidOperationException("Only methods or properties can be mocked in Setup.");
+            }
+        }
+    }
+}
