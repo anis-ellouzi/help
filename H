@@ -3,51 +3,64 @@ using System.Collections.Generic;
 
 class Program
 {
-    public class Echeancier
-    {
-        public DateTime DateDebut { get; set; }
-        public DateTime DateFin { get; set; }
-    }
-
     static void Main()
     {
-        // Date de livraison
-        DateTime dateLivraison = new DateTime(2024, 12, 25);
-        
-        // Liste pour stocker les échéanciers
-        List<Echeancier> echeanciers = GenererEcheancier(dateLivraison);
-        
-        // Affichage des échéanciers
-        Console.WriteLine("Échéancier pour la date de livraison : " + dateLivraison.ToShortDateString());
-        foreach (var echeancier in echeanciers)
+        // Définir l'échéancier initial
+        var echeancier = new List<(DateTime debut, DateTime fin)>
         {
-            Console.WriteLine($"Date de début: {echeancier.DateDebut.ToShortDateString()}, Date de fin: {echeancier.DateFin.ToShortDateString()}");
+            (new DateTime(2024, 12, 1), new DateTime(2024, 12, 31)),
+            (new DateTime(2025, 12, 1), new DateTime(2025, 3, 31)),
+            (new DateTime(2025, 4, 1), new DateTime(2025, 12, 31))
+        };
+
+        // Date de livraison
+        DateTime dateLivraison = new DateTime(2025, 2, 15); // Exemple de date de livraison
+
+        // Calculer le nouveau tableau d'échéancier
+        var nouveauEcheancier = CalculerNouveauEcheancier(echeancier, dateLivraison);
+
+        // Afficher le résultat
+        foreach (var echeance in nouveauEcheancier)
+        {
+            Console.WriteLine($"Début: {echeance.debut.ToShortDateString()} - Fin: {echeance.fin.ToShortDateString()}");
         }
     }
 
-    static List<Echeancier> GenererEcheancier(DateTime dateLivraison)
+    static List<(DateTime debut, DateTime fin)> CalculerNouveauEcheancier(List<(DateTime debut, DateTime fin)> echeancier, DateTime dateLivraison)
     {
-        List<Echeancier> echeanciers = new List<Echeancier>();
+        var nouveauEcheancier = new List<(DateTime debut, DateTime fin)>();
 
-        // Définir la durée entre chaque étape (ici 7 jours pour l'exemple)
-        TimeSpan dureeEcheance = TimeSpan.FromDays(7);
-
-        // Calculer le nombre d'étapes en fonction de la date de livraison
-        DateTime dateCourante = dateLivraison;
-        
-        // On considère un échéancier de 4 étapes avant la livraison
-        for (int i = 0; i < 4; i++)
+        foreach (var (debut, fin) in echeancier)
         {
-            // Définir la date de début de l'étape (peut être passé ou futur)
-            DateTime dateDebut = dateCourante - dureeEcheance * (i + 1); // La date commence avant la livraison
-            
-            // La date de fin est 7 jours après la date de début
-            DateTime dateFin = dateDebut + dureeEcheance;
-            
-            // Ajouter l'échéancier à la liste
-            echeanciers.Add(new Echeancier { DateDebut = dateDebut, DateFin = dateFin });
+            // Si la date de livraison est dans la période de l'échéancier
+            if (dateLivraison >= debut && dateLivraison <= fin)
+            {
+                // Ajuster les dates d'échéance en fonction de la date de livraison
+                DateTime debutModifie = debut;
+                DateTime finModifie = fin;
+
+                // Modifier le début de la période
+                if (debut.Day == 1)
+                {
+                    // Si le jour est le 1er du mois, on conserve ce jour
+                    debutModifie = dateLivraison;
+                }
+                else
+                {
+                    // Sinon on fixe à la fin du mois précédent
+                    debutModifie = debut.AddMonths(-1).AddDays(DateTime.DaysInMonth(debut.AddMonths(-1).Year, debut.AddMonths(-1).Month) - debut.Day + 1);
+                }
+
+                // Ajouter la nouvelle période ajustée à l'échéancier
+                nouveauEcheancier.Add((debutModifie, finModifie));
+            }
+            else
+            {
+                // Si la date de livraison n'affecte pas cette période, on garde la période originale
+                nouveauEcheancier.Add((debut, fin));
+            }
         }
 
-        return echeanciers;
+        return nouveauEcheancier;
     }
 }
