@@ -1,0 +1,111 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
+
+public static class MockGenerator
+{
+    public static T CreateMock<T>() where T : class
+    {
+        // Get the type of the original class
+        var type = typeof(T);
+
+        if (!type.IsClass || type.IsSealed)
+            throw new InvalidOperationException("Type must be a non-sealed class.");
+
+        // Create a dynamic assembly and module
+        var assemblyName = new AssemblyName("DynamicMockAssembly");
+        var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+        var moduleBuilder = assemblyBuilder.DefineDynamicModule("DynamicMockModule");
+
+        // Define a new type that inherits from the original class
+        var typeBuilder = moduleBuilder.DefineType(
+            type.Name + "Mock",
+            TypeAttributes.Public | TypeAttributes.Class,
+            type);
+
+        // Add a dictionary to store method overrides
+        var overridesField = typeBuilder.DefineField(
+            "_methodOverrides",
+            typeof(Dictionary<string, Func<object[], object>>),
+            FieldAttributes.Private);
+
+        // Add a method to update the dictionary
+        var updateMethod = typeBuilder.DefineMethod(
+            "SetMethodOverride",
+            MethodAttributes.Public,
+            typeof(void),
+            new[] { typeof(string), typeof(Func<object[], object>) });
+
+        var updateIL = updateMethod.GetILGenerator();
+        updateIL.Emit(OpCodes.Ldarg_0); // Load "this"
+        updateIL.Emit(OpCodes.Ldfld, overridesField); // Load _methodOverrides
+        updateIL.Emit(OpCodes.Ldarg_1); // Load method name
+        updateIL.Emit(OpCodes.Ldarg_2); // Load override delegate
+        updateIL.Emit(OpCodes.Call, typeof(Dictionary<string, Func<object[], object>>).GetMethod("set_Item"));
+        updateIL.Emit(OpCodes.Ret);
+
+        // Constructor to initialize the dictionary
+        var constructor = typeBuilder.DefineConstructor(
+            MethodAttributes.Public,
+            CallingConventions.Standard,
+            Type.EmptyTypes);
+
+        var ctorIL = constructor.GetILGenerator();
+        ctorIL.Emit(OpCodes.Ldarg_0); // Load "this"
+        ctorIL.Emit(OpCodes.Call, type.GetConstructor(Type.EmptyTypes)); // Call base constructor
+        ctorIL.Emit(OpCodes.Ldarg_0); // Load "this"
+        ctorIL.Emit(OpCodes.Newobj, typeof(Dictionary<string, Func<object[], object>>).GetConstructor(Type.EmptyTypes)); // Create new dictionary
+        ctorIL.Emit(OpCodes.Stfld, overridesField); // Store in _methodOverrides
+        ctorIL.Emit(OpCodes.Ret);
+
+        // Override virtual methods
+        foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            if (method.IsVirtual && !method.IsFinal)
+            {
+                var methodBuilder = typeBuilder.DefineMethod(
+                    method.Name,
+                    MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig,
+                    method.ReturnType,
+                    Array.ConvertAll(method.GetParameters(), p => p.ParameterType));
+
+                var ilGenerator = methodBuilder.GetILGenerator();
+
+                // Check if a method override exists
+                ilGenerator.Emit(OpCodes.Ldarg_0); // Load "this"
+                ilGenerator.Emit(OpCodes.Ldfld, overridesField); // Load _methodOverrides
+                ilGenerator.Emit(OpCodes.Ldstr, method.Name); // Load method name
+                ilGenerator.Emit(OpCodes.Call, typeof(Dictionary<string, Func<object[], object>>).GetMethod("ContainsKey"));
+                var hasOverrideLabel = ilGenerator.DefineLabel();
+                ilGenerator.Emit(OpCodes.Brtrue_S, hasOverrideLabel);
+
+                // Default behavior (call base implementation)
+                ilGenerator.Emit(OpCodes.Ldarg_0); // Load "this"
+                for (int i = 0; i < method.GetParameters().Length; i++)
+                {
+                    ilGenerator.Emit(OpCodes.Ldarg_S, i + 1); // Load arguments
+                }
+                ilGenerator.Emit(OpCodes.Call, method); // Call base method
+                ilGenerator.Emit(OpCodes.Ret);
+
+                // Override behavior
+                ilGenerator.MarkLabel(hasOverrideLabel);
+                ilGenerator.Emit(OpCodes.Ldarg_0); // Load "this"
+                ilGenerator.Emit(OpCodes.Ldfld, overridesField); // Load _methodOverrides
+                ilGenerator.Emit(OpCodes.Ldstr, method.Name); // Load method name
+                ilGenerator.Emit(OpCodes.Call, typeof(Dictionary<string, Func<object[], object>>).GetMethod("get_Item")); // Get override delegate
+                ilGenerator.Emit(OpCodes.Ldnull); // (Assuming no arguments passed to the override for simplicity)
+                ilGenerator.Emit(OpCodes.Callvirt, typeof(Func<object[], object>).GetMethod("Invoke"));
+                ilGenerator.Emit(OpCodes.Ret);
+
+                // Mark the method as overridden
+                typeBuilder.DefineMethodOverride(methodBuilder, method);
+            }
+        }
+
+        // Create the type and return an instance
+        var mockType = typeBuilder.CreateType();
+        return Activator.CreateInstance(mockType) as T;
+    }
+}
