@@ -1,0 +1,75 @@
+using System;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        // Create an instance of Product
+        Product product = new Product();
+
+        // Call the original method
+        Console.WriteLine("Before overriding:");
+        product.DisplayInfo(); // Output: This is a product.
+
+        // Override the method at runtime
+        OverrideDisplayInfo(product);
+
+        // Call the overridden method
+        Console.WriteLine("After overriding:");
+        product.DisplayInfo(); // Output: This is a custom product.
+    }
+
+    public static void OverrideDisplayInfo(Product product)
+    {
+        // Get the type of the product instance
+        Type type = product.GetType();
+
+        // Get the original method info
+        MethodInfo method = type.GetMethod("DisplayInfo");
+
+        // Create a dynamic method to replace the original method's behavior
+        DynamicMethod dynamicMethod = new DynamicMethod(
+            "CustomDisplayInfo",
+            typeof(void),             // Return type
+            new Type[0],              // Parameter types
+            type);
+
+        // Emit IL for the new method
+        ILGenerator il = dynamicMethod.GetILGenerator();
+        il.Emit(OpCodes.Ldstr, "This is a custom product.");
+        il.Emit(OpCodes.Call, typeof(Console).GetMethod("WriteLine", new[] { typeof(string) }));
+        il.Emit(OpCodes.Ret);
+
+        // Compile the dynamic method into a delegate
+        var newMethodDelegate = (Action)dynamicMethod.CreateDelegate(typeof(Action));
+
+        // Replace the method implementation in the method table
+        ReplaceMethod(method, newMethodDelegate.Method);
+    }
+
+    public static void ReplaceMethod(MethodInfo original, MethodInfo replacement)
+    {
+        // Ensure the methods are prepared
+        RuntimeHelpers.PrepareMethod(original.MethodHandle);
+        RuntimeHelpers.PrepareMethod(replacement.MethodHandle);
+
+        unsafe
+        {
+            // Get pointers to the method implementations
+            IntPtr* originalPtr = (IntPtr*)original.MethodHandle.Value.ToPointer();
+            IntPtr* replacementPtr = (IntPtr*)replacement.MethodHandle.Value.ToPointer();
+
+            if (IntPtr.Size == 8) // 64-bit
+            {
+                originalPtr[1] = replacementPtr[1];
+            }
+            else // 32-bit
+            {
+                originalPtr[2] = replacementPtr[2];
+            }
+        }
+    }
+}
