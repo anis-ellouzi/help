@@ -1,0 +1,66 @@
+using System;
+using System.Reflection;
+using System.Reflection.Emit;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        Product product = new Product();
+
+        // Original method call
+        product.DisplayInfo(); // Output: This is a product.
+
+        // Dynamically change behavior
+        ReplaceMethod(product, "DisplayInfo", () =>
+        {
+            Console.WriteLine("This is a dynamically modified product.");
+        });
+
+        // Call the modified method
+        product.DisplayInfo(); // Output: This is a dynamically modified product.
+    }
+
+    public static void ReplaceMethod(object instance, string methodName, Action newMethod)
+    {
+        MethodInfo originalMethod = instance.GetType().GetMethod(methodName);
+
+        if (originalMethod == null)
+            throw new ArgumentException($"Method '{methodName}' not found.");
+
+        DynamicMethod dynamicMethod = new DynamicMethod(
+            originalMethod.Name,
+            originalMethod.ReturnType,
+            new Type[] { instance.GetType() },
+            instance.GetType()
+        );
+
+        ILGenerator ilGen = dynamicMethod.GetILGenerator();
+        ilGen.Emit(OpCodes.Ldarg_0);
+        ilGen.Emit(OpCodes.Call, newMethod.Method);
+        ilGen.Emit(OpCodes.Ret);
+
+        originalMethod.MethodHandle.GetFunctionPointer().SetFunctionPointer(dynamicMethod.GetFunctionPointer());
+    }
+}
+
+static class FunctionPointerExtension
+{
+    public static void SetFunctionPointer(this IntPtr methodPointer, IntPtr newPointer)
+    {
+        unsafe
+        {
+            *(IntPtr*)methodPointer = newPointer;
+        }
+    }
+}
+public class Product
+{
+    public void DisplayInfo()
+    {
+        Console.WriteLine("This is a product.");
+    }
+}
+
+
+
