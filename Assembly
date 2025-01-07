@@ -1,0 +1,57 @@
+using System;
+using System.Reflection;
+using System.Reflection.Emit;
+
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        // Create an instance of the original class
+        Product product = new Product();
+        Console.WriteLine("Before overriding:");
+        product.DisplayInfo(); // Output: This is a product.
+
+        // Generate a dynamic type and replace the method
+        Product dynamicProduct = CreateDynamicProduct();
+        Console.WriteLine("After overriding:");
+        dynamicProduct.DisplayInfo(); // Output: This is a custom product.
+    }
+
+    public static Product CreateDynamicProduct()
+    {
+        // Define a dynamic assembly
+        AssemblyName assemblyName = new AssemblyName("DynamicProductAssembly");
+        AssemblyBuilder assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+
+        // Define a dynamic module
+        ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("DynamicProductModule");
+
+        // Define a dynamic type that inherits from Product
+        TypeBuilder typeBuilder = moduleBuilder.DefineType(
+            "DynamicProduct",
+            TypeAttributes.Public,
+            typeof(Product)); // Inherit from Product
+
+        // Override the DisplayInfo method
+        MethodBuilder methodBuilder = typeBuilder.DefineMethod(
+            "DisplayInfo",
+            MethodAttributes.Public | MethodAttributes.Virtual,
+            typeof(void),      // Return type
+            Type.EmptyTypes);  // No parameters
+
+        // Generate IL for the overridden method
+        ILGenerator ilGenerator = methodBuilder.GetILGenerator();
+        ilGenerator.Emit(OpCodes.Ldstr, "This is a custom product.");
+        ilGenerator.Emit(OpCodes.Call, typeof(Console).GetMethod("WriteLine", new[] { typeof(string) }));
+        ilGenerator.Emit(OpCodes.Ret);
+
+        // Apply the override
+        typeBuilder.DefineMethodOverride(methodBuilder, typeof(Product).GetMethod("DisplayInfo"));
+
+        // Create the dynamic type
+        Type dynamicType = typeBuilder.CreateType();
+
+        // Instantiate and return the dynamic object
+        return (Product)Activator.CreateInstance(dynamicType);
+    }
+}
