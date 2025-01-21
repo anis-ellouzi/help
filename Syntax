@@ -179,3 +179,35 @@ public static SyntaxTree FormatSyntaxTree(SyntaxTree tree)
         // Return a new syntax tree with the formatted root
         return SyntaxFactory.SyntaxTree(formattedRoot);
     }
+public static SyntaxTree RemoveUnusedVars(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+        
+        // Find all variable declarations in method bodies
+        var variableDeclarations = root.DescendantNodes()
+            .OfType<VariableDeclaratorSyntax>()
+            .Where(varDecl => IsUnused(varDecl));
+
+        var updatedRoot = root;
+
+        // Remove the unused variable declarations
+        foreach (var varDecl in variableDeclarations)
+        {
+            updatedRoot = updatedRoot.RemoveNode(varDecl, SyntaxRemoveOptions.KeepNoTrivia);
+        }
+
+        // Return the updated syntax tree
+        return SyntaxFactory.SyntaxTree(updatedRoot);
+    }
+
+    // Check if the variable is unused by looking for its references in the syntax tree
+    private static bool IsUnused(VariableDeclaratorSyntax varDecl)
+    {
+        var references = varDecl.SyntaxTree.GetRoot()
+            .DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Where(identifier => identifier.Identifier.Text == varDecl.Identifier.Text);
+
+        // A variable is unused if it has no references other than its own declaration
+        return !references.Any();
+    }
