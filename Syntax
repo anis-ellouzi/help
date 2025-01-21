@@ -253,3 +253,68 @@ public static SyntaxTree AddIgnoreToEmptyCatchBlocks(SyntaxTree tree)
     {
         return catchClause.Block?.Statements.Count == 0;
     }
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Linq;
+using System.Globalization;
+
+class AddCultureInfoToStringAndParse
+{
+    public static SyntaxTree AddCultureInfoToStringAndParseCalls(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+
+        // Modify ToString() calls without parameters to include CultureInfo.InvariantCulture
+        var toStringCalls = root.DescendantNodes()
+                                .OfType<InvocationExpressionSyntax>()
+                                .Where(invocation => invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+                                                     memberAccess.Name.Identifier.Text == "ToString" &&
+                                                     invocation.ArgumentList.Arguments.Count == 0);
+
+        var updatedRoot = root;
+
+        foreach (var toStringCall in toStringCalls)
+        {
+            var updatedToStringCall = toStringCall.WithArgumentList(
+                SyntaxFactory.ArgumentList(
+                    SyntaxFactory.SingletonSeparatedList<ArgumentSyntax>(
+                        SyntaxFactory.Argument(
+                            SyntaxFactory.ParseExpression("CultureInfo.InvariantCulture")
+                        )
+                    )
+                )
+            );
+
+            updatedRoot = updatedRoot.ReplaceNode(toStringCall, updatedToStringCall);
+        }
+
+        // Modify Parse calls for primary types and string to include CultureInfo.InvariantCulture
+        var parseCalls = root.DescendantNodes()
+                             .OfType<InvocationExpressionSyntax>()
+                             .Where(invocation => invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
+                                                  memberAccess.Name.Identifier.Text == "Parse" &&
+                                                  invocation.ArgumentList.Arguments.Count == 1 &&
+                                                  invocation.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax);
+
+        foreach (var parseCall in parseCalls)
+        {
+            var updatedParseCall = parseCall.WithArgumentList(
+                SyntaxFactory.ArgumentList(
+                    SyntaxFactory.SeparatedList<ArgumentSyntax>(new[]
+                    {
+                        parseCall.ArgumentList.Arguments[0],  // Keep the first argument (the value to parse)
+                        SyntaxFactory.Argument(
+                            SyntaxFactory.ParseExpression("CultureInfo.InvariantCulture")
+                        )
+                    })
+                )
+            );
+
+            updatedRoot = updatedRoot.ReplaceNode(parseCall, updatedParseCall);
+        }
+
+        // Return the updated syntax tree
+        return SyntaxFactory.SyntaxTree(updatedRoot);
+    }
+}
