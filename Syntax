@@ -329,3 +329,53 @@ class AddCultureInfoToStringAndParse
         return SyntaxFactory.SyntaxTree(updatedRoot);
     }
 }
+    public static SyntaxTree RemoveUnusedVarsInsideMethod(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+
+        // Find all method declarations
+        var methodDeclarations = root.DescendantNodes()
+                                     .OfType<MethodDeclarationSyntax>();
+
+        var updatedRoot = root;
+
+        foreach (var method in methodDeclarations)
+        {
+            var methodBody = method.Body;
+
+            if (methodBody != null)
+            {
+                // Find all variable declarations inside the method body
+                var variableDeclarations = methodBody.Statements
+                                                     .OfType<LocalDeclarationStatementSyntax>()
+                                                     .SelectMany(statement => statement.Declaration.Variables);
+
+                // Check for unused variables and remove them
+                foreach (var variable in variableDeclarations.ToList())
+                {
+                    // Check if the variable is used anywhere in the method body
+                    if (!IsVariableUsedInMethod(methodBody, variable))
+                    {
+                        // Remove the unused variable declaration
+                        updatedRoot = updatedRoot.RemoveNode(variable.Parent, SyntaxRemoveOptions.KeepNoTrivia);
+                    }
+                }
+            }
+        }
+
+        // Return the updated syntax tree
+        return SyntaxFactory.SyntaxTree(updatedRoot);
+    }
+
+    // Check if the variable is used in the method body
+    private static bool IsVariableUsedInMethod(BlockSyntax methodBody, VariableDeclaratorSyntax variable)
+    {
+        var variableName = variable.Identifier.Text;
+
+        // Look for the variable in all statements in the method body
+        var references = methodBody.DescendantNodes()
+                                    .OfType<IdentifierNameSyntax>()
+                                    .Where(identifier => identifier.Identifier.Text == variableName);
+
+        return references.Any();
+    }
