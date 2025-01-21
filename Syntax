@@ -4,44 +4,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Linq;
 
-class NullCheckInserter
+class AddNullChecksWithVerification
 {
-    public static void AddNullChecks(SyntaxTree tree)
+    public static string AddNullChecks(SyntaxTree tree)
     {
         var root = tree.GetRoot();
-        var methods = root.DescendantNodes()
-                          .OfType<MethodDeclarationSyntax>();
-
-        foreach (var method in methods)
-        {
-            var parameters = method.ParameterList.Parameters;
-            if (parameters.Count == 0) continue;
-
-            var checks = parameters.Select(param =>
-                SyntaxFactory.ParseStatement($"if ({param.Identifier.Text} == null) throw new ArgumentNullException(nameof({param.Identifier.Text}));\n"));
-
-            var body = method.Body ?? SyntaxFactory.Block();
-            var newBody = body.WithStatements(body.Statements.InsertRange(0, checks));
-            var newMethod = method.WithBody(newBody);
-
-            Console.WriteLine(newMethod.ToFullString());
-        }
-    }
-}
-using System;
-using System.Linq;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Formatting;
-
-class AddMethodComments
-{
-    public static string AddCommentsToMethods(SyntaxTree tree)
-    {
-        var root = tree.GetRoot();
-
-        // Find all method declarations
         var methods = root.DescendantNodes()
                           .OfType<MethodDeclarationSyntax>();
 
@@ -49,20 +16,69 @@ class AddMethodComments
 
         foreach (var method in methods)
         {
-            // Check if the method already has a leading trivia (e.g., comments or documentation)
-            if (method.GetLeadingTrivia().Any(t => t.IsKind(SyntaxKind.SingleLineCommentTrivia) ||
-                                                   t.IsKind(SyntaxKind.MultiLineCommentTrivia) ||
-                                                   t.IsKind(SyntaxKind.DocumentationCommentExteriorTrivia)))
-            {
-                continue; // Skip if the method already has a comment
-            }
+            var parameters = method.ParameterList.Parameters;
 
-            // Create a comment
-            var commentTrivia = SyntaxFactory.Comment($"// Method: {method.Identifier.Text}");
+            if (parameters.Count == 0 || method.Body == null) continue;
+
+            var existingChecks = method.Body.Statements
+                                             .OfType<IfStatementSyntax>()
+                                             .Where(ifStmt => ifStmt.Condition is BinaryExpressionSyntax binaryExpr &&
+                                                              binaryExpr.IsKind(SyntaxKind.EqualsExpression) &&
+                                                              binaryExpr.Left is IdentifierNameSyntax);
+
+            var checkedParams = existingChecks.Select(ifStmt =>
+            {
+                var binaryExpr = (BinaryExpressionSyntax)ifStmt.Condition;
+                return ((IdentifierNameSyntax)binaryExpr.Left).Identifier.Text;
+            }).ToHashSet();
+
+            var newChecks = parameters
+                .Where(param => !checkedParams.Contains(param.Identifier.Text))
+                .Select(param => SyntaxFactory.ParseStatement(
+                    $"if ({param.Identifier.Text} == null) throw new ArgumentNullException(nameof({param.Identifier.Text}));\n"));
+
+            if (!newChecks.Any()) continue;
+
+            var newBody = method.Body.WithStatements(method.Body.Statements.InsertRange(0, newChecks));
+            var updatedMethod = method.WithBody(newBody);
+
+            updatedRoot = updatedRoot.ReplaceNode(method, updatedMethod);
+        }
+
+        return updatedRoot.ToFullString();
+    }
+}
+
+using System;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
+
+class AddXmlComments
+{
+    public static string AddXmlCommentsToMethods(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+
+        // Find all method declarations
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+
+        var updatedRoot = root;
+
+        foreach (var method in methods)
+        {
+            // Check if the method already has XML documentation comments
+            if (method.GetLeadingTrivia().Any(t => t.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia)))
+                continue;
+
+            // Generate XML documentation comment
+            var xmlComment = GenerateXmlComment(method);
 
             // Add the comment as leading trivia
             var leadingTrivia = method.GetLeadingTrivia()
-                                       .Add(SyntaxFactory.Trivia(commentTrivia))
+                                       .Insert(0, SyntaxFactory.Trivia(xmlComment))
                                        .Add(SyntaxFactory.CarriageReturnLineFeed);
 
             // Update the method with the new trivia
@@ -78,4 +94,37 @@ class AddMethodComments
         // Return the updated code as a string
         return updatedRoot.ToFullString();
     }
+
+    private static DocumentationCommentTriviaSyntax GenerateXmlComment(MethodDeclarationSyntax method)
+    {
+        var summaryText = $"Returns a {method.ReturnType}";
+
+        // Create <summary> element
+        var summary = SyntaxFactory.XmlSummaryElement(
+            SyntaxFactory.XmlText(" " + summaryText + " ")
+        );
+
+        // Create <param> elements
+        var paramElements = method.ParameterList.Parameters.Select(param =>
+            SyntaxFactory.XmlParamElement(
+                SyntaxFactory.IdentifierName(param.Identifier.Text),
+                SyntaxFactory.XmlText("")
+            )
+        );
+
+        // Create <returns> element
+        var returns = SyntaxFactory.XmlReturnsElement(
+            SyntaxFactory.XmlText("")
+        );
+
+        // Combine all elements into a single documentation comment
+        return SyntaxFactory.DocumentationComment(
+            summary,
+            SyntaxFactory.XmlNewLine(Environment.NewLine),
+            SyntaxFactory.List(paramElements),
+            SyntaxFactory.XmlNewLine(Environment.NewLine),
+            returns
+        );
+    }
 }
+
