@@ -157,3 +157,12 @@ public static SyntaxTree AddElseBlocks(SyntaxTree tree)
         // Return the updated syntax tree
         return SyntaxFactory.SyntaxTree(updatedRoot);
     }
+private static bool ContainsThrowArgumentNullException(IfStatementSyntax ifStmt)
+    {
+        // Check if the body contains a throw new ArgumentNullException statement
+        return ifStmt.Statement is BlockSyntax block && block.Statements
+            .OfType<ThrowStatementSyntax>()
+            .Any(throwStmt =>
+                throwStmt.Expression is ObjectCreationExpressionSyntax creationExpr &&
+                creationExpr.Type.ToString() == "ArgumentNullException");
+    }
