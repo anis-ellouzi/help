@@ -166,3 +166,16 @@ private static bool ContainsThrowArgumentNullException(IfStatementSyntax ifStmt)
                 throwStmt.Expression is ObjectCreationExpressionSyntax creationExpr &&
                 creationExpr.Type.ToString() == "ArgumentNullException");
     }
+public static SyntaxTree FormatSyntaxTree(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+
+        // Create a workspace for formatting
+        var workspace = new AdhocWorkspace();
+
+        // Format the root node
+        var formattedRoot = Formatter.Format(root, workspace);
+
+        // Return a new syntax tree with the formatted root
+        return SyntaxFactory.SyntaxTree(formattedRoot);
+    }
