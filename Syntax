@@ -249,9 +249,20 @@ public static SyntaxTree AddIgnoreToEmptyCatchBlocks(SyntaxTree tree)
     }
 
     // Check if the catch block is empty
-    private static bool IsEmptyCatchBlock(CatchClauseSyntax catchClause)
+private static bool IsEmptyCatchBlock(CatchClauseSyntax catchClause)
     {
-        return catchClause.Block?.Statements.Count == 0;
+        // Check if the catch block has no statements or contains only whitespace/comments
+        if (catchClause.Block?.Statements.Count == 0)
+        {
+            // Check if the block contains only comments or whitespace
+            var blockStatements = catchClause.Block.Statements;
+            return blockStatements.All(statement => 
+                statement is EmptyStatementSyntax || // Empty statement
+                statement is CommentSyntax ||       // Comment
+                string.IsNullOrWhiteSpace(statement.ToString())); // Whitespace only
+        }
+
+        return false;
     }
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
