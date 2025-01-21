@@ -418,3 +418,45 @@ class CodeFormatter
         return SyntaxFactory.SyntaxTree(formattedRoot);
     }
 }
+class InlineCommentRemover : CSharpSyntaxRewriter
+{
+    public override SyntaxNode Visit(SyntaxNode node)
+    {
+        if (node == null) return null;
+
+        // Remove inline comments from the node's leading trivia
+        var leadingTrivia = node.GetLeadingTrivia()
+                                .Where(trivia => !IsCommentTrivia(trivia));
+
+        // Remove inline comments from the node's trailing trivia
+        var trailingTrivia = node.GetTrailingTrivia()
+                                 .Where(trivia => !IsCommentTrivia(trivia));
+
+        // Replace the node with the cleaned trivia
+        return node.WithLeadingTrivia(leadingTrivia).WithTrailingTrivia(trailingTrivia);
+    }
+
+    private bool IsCommentTrivia(SyntaxTrivia trivia)
+    {
+        // Check if the trivia is a single-line or multi-line comment
+        return trivia.IsKind(SyntaxKind.SingleLineCommentTrivia) ||
+               trivia.IsKind(SyntaxKind.MultiLineCommentTrivia);
+    }
+}
+
+class CodeCleaner
+{
+    public static SyntaxTree RemoveInlineComments(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+
+        // Create an instance of the InlineCommentRemover rewriter
+        var rewriter = new InlineCommentRemover();
+
+        // Apply the rewriter to the syntax tree
+        var newRoot = rewriter.Visit(root);
+
+        // Return the updated syntax tree
+        return SyntaxFactory.SyntaxTree(newRoot);
+    }
+}
