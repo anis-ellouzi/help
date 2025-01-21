@@ -211,3 +211,45 @@ public static SyntaxTree RemoveUnusedVars(SyntaxTree tree)
         // A variable is unused if it has no references other than its own declaration
         return !references.Any();
     }
+public static SyntaxTree AddIgnoreToEmptyCatchBlocks(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+
+        // Find all catch blocks
+        var catchBlocks = root.DescendantNodes()
+                              .OfType<CatchClauseSyntax>()
+                              .Where(catchClause => IsEmptyCatchBlock(catchClause));
+
+        var updatedRoot = root;
+
+        foreach (var catchBlock in catchBlocks)
+        {
+            // Create a new statement calling MyConvet.Ignore()
+            var ignoreCallStatement = SyntaxFactory.ExpressionStatement(
+                SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.MemberAccessExpression(
+                        SyntaxFactory.SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.IdentifierName("MyConvet"),
+                        SyntaxFactory.IdentifierName("Ignore")
+                    )
+                )
+            );
+
+            // Replace the empty catch block with the call to MyConvet.Ignore()
+            var updatedCatch = catchBlock.WithBlock(
+                SyntaxFactory.Block(ignoreCallStatement)
+            );
+
+            // Replace the old catch block with the updated one
+            updatedRoot = updatedRoot.ReplaceNode(catchBlock, updatedCatch);
+        }
+
+        // Return the updated syntax tree
+        return SyntaxFactory.SyntaxTree(updatedRoot);
+    }
+
+    // Check if the catch block is empty
+    private static bool IsEmptyCatchBlock(CatchClauseSyntax catchClause)
+    {
+        return catchClause.Block?.Statements.Count == 0;
+    }
