@@ -379,3 +379,42 @@ class AddCultureInfoToStringAndParse
 
         return references.Any();
     }
+class ManualCodeFormatter : CSharpSyntaxRewriter
+{
+    // This method overrides the default Visit method for BlockSyntax (like methods and control blocks)
+    public override SyntaxNode VisitBlock(BlockSyntax node)
+    {
+        // Indent the block manually
+        var formattedStatements = node.Statements.Select(s => s.WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)).ToList();
+
+        // Return the block with adjusted leading trivia for indentation
+        return node.WithStatements(SyntaxFactory.List(formattedStatements));
+    }
+
+    // Override other Visit methods as needed for other node types
+    public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
+    {
+        // Format the method declaration manually (e.g., adding a newline between the method signature and body)
+        var formattedMethod = base.VisitMethodDeclaration(node) as MethodDeclarationSyntax;
+
+        // Adjust the method signature (you can add custom logic to format method declarations as well)
+        return formattedMethod;
+    }
+}
+
+class CodeFormatter
+{
+    public static SyntaxTree FormatCodeWithoutNormalizeWhitespace(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+
+        // Create an instance of the custom formatter
+        var formatter = new ManualCodeFormatter();
+
+        // Apply manual formatting by visiting the nodes and adjusting them
+        var formattedRoot = formatter.Visit(root);
+
+        // Return the formatted syntax tree
+        return SyntaxFactory.SyntaxTree(formattedRoot);
+    }
+}
