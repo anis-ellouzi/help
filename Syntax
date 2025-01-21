@@ -127,4 +127,33 @@ class AddXmlComments
         );
     }
 }
+public static SyntaxTree AddElseBlocks(SyntaxTree tree)
+    {
+        var root = tree.GetRoot();
+        
+        // Find all if statements
+        var ifStatements = root.DescendantNodes()
+                               .OfType<IfStatementSyntax>()
+                               .Where(ifStmt => ifStmt.Else == null); // Only if statements without else
 
+        var updatedRoot = root;
+
+        foreach (var ifStatement in ifStatements)
+        {
+            // Create an empty else block with `ignore();`
+            var elseClause = SyntaxFactory.ElseClause(
+                SyntaxFactory.Block(
+                    SyntaxFactory.ParseStatement("ignore();")
+                )
+            );
+
+            // Add the else block to the if statement
+            var updatedIf = ifStatement.WithElse(elseClause);
+
+            // Replace the old if statement with the updated one
+            updatedRoot = updatedRoot.ReplaceNode(ifStatement, updatedIf);
+        }
+
+        // Return the updated syntax tree
+        return SyntaxFactory.SyntaxTree(updatedRoot);
+    }
