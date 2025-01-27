@@ -1,0 +1,88 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        string projectPath = @"path\to\your\project"; // Replace with your project path
+        var csFiles = Directory.GetFiles(projectPath, "*.cs", SearchOption.AllDirectories);
+
+        foreach (var file in csFiles)
+        {
+            Console.WriteLine($"Processing file: {file}");
+            var code = await File.ReadAllTextAsync(file);
+            var updatedCode = await ProcessFileAsync(code);
+
+            if (updatedCode != code)
+            {
+                await File.WriteAllTextAsync(file, updatedCode);
+                Console.WriteLine($"File updated: {file}");
+            }
+        }
+
+        Console.WriteLine("Processing complete.");
+    }
+
+    static async Task<string> ProcessFileAsync(string code)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(code);
+        var compilation = CSharpCompilation.Create("TempCompilation")
+            .AddReferences(
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Console).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var root = await syntaxTree.GetRootAsync();
+
+        // Find all assignment expressions
+        var assignments = root.DescendantNodes()
+            .OfType<AssignmentExpressionSyntax>();
+
+        var newRoot = root;
+
+        foreach (var assignment in assignments)
+        {
+            // Check if the left-hand side refers to `ClassA.x` and is of type `string`
+            if (IsClassAPropertyAssignment(assignment, semanticModel))
+            {
+                // Replace the right-hand side with `new MyString(...)`
+                var newRightHandSide = SyntaxFactory.ObjectCreationExpression(
+                        SyntaxFactory.IdentifierName("MyString"))
+                    .WithArgumentList(
+                        SyntaxFactory.ArgumentList(
+                            SyntaxFactory.SingletonSeparatedList(
+                                SyntaxFactory.Argument(assignment.Right))));
+
+                var newAssignment = assignment.WithRight(newRightHandSide);
+                newRoot = newRoot.ReplaceNode(assignment, newAssignment);
+            }
+        }
+
+        return newRoot.ToFullString();
+    }
+
+    static bool IsClassAPropertyAssignment(AssignmentExpressionSyntax assignment, SemanticModel semanticModel)
+    {
+        // Get the symbol for the left-hand side of the assignment
+        var leftSymbol = semanticModel.GetSymbolInfo(assignment.Left).Symbol;
+
+        if (leftSymbol == null) return false;
+
+        // Check if the symbol is a property named `x` in ClassA
+        if (leftSymbol.Kind == SymbolKind.Property && leftSymbol.Name == "x")
+        {
+            // Get the containing type (e.g., ClassA)
+            var containingType = (leftSymbol as IPropertySymbol)?.ContainingType;
+            return containingType?.Name == "ClassA" && containingType.ToString() == "NamespaceName.ClassA";
+        }
+
+        return false;
+    }
+}
