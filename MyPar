@@ -1,0 +1,38 @@
+using System;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        string code = @"
+        public class Test
+        {
+            public void Example()
+            {
+                int a = 5;
+                string x = m.x;
+                x = ""Hello"";
+                y = 10;
+            }
+        }";
+
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(code);
+        var root = tree.GetRoot();
+
+        // Traverse the tree to find all AssignmentExpressions
+        var walker = new AssignmentExpressionWalker();
+        walker.Visit(root);
+    }
+}
+
+class AssignmentExpressionWalker : CSharpSyntaxWalker
+{
+    public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
+    {
+        Console.WriteLine($"Assignment found: {node}");
+        base.VisitAssignmentExpression(node);
+    }
+}
