@@ -36,3 +36,103 @@ class AssignmentExpressionWalker : CSharpSyntaxWalker
         base.VisitAssignmentExpression(node);
     }
 }
+
+using System;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        string code = @"
+        public class Test
+        {
+            public void Example()
+            {
+                string x = m.x;
+                string y;
+                y = m.y;
+            }
+        }";
+
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(code);
+        var root = tree.GetRoot();
+
+        // Create a workspace and generator for code modifications
+        var workspace = new AdhocWorkspace();
+        var editor = new SyntaxEditor(root, workspace);
+
+        var model = new CompilationUnitSyntaxWalker(editor);
+        model.Visit(root);
+
+        // Get the updated code
+        var updatedCode = editor.GetChangedRoot().ToFullString();
+        Console.WriteLine(updatedCode);
+    }
+}
+
+class CompilationUnitSyntaxWalker : CSharpSyntaxWalker
+{
+    private readonly SyntaxEditor _editor;
+
+    public CompilationUnitSyntaxWalker(SyntaxEditor editor)
+    {
+        _editor = editor;
+    }
+
+    public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
+    {
+        // Check for the pattern x = m.x;
+        if (node.Right is MemberAccessExpressionSyntax memberAccess &&
+            node.Left is IdentifierNameSyntax identifier)
+        {
+            // Create the replacement code: new MyString(m.x)
+            var newExpression = SyntaxFactory.ObjectCreationExpression(
+                    SyntaxFactory.IdentifierName("MyString"))
+                .WithArgumentList(
+                    SyntaxFactory.ArgumentList(
+                        SyntaxFactory.SingletonSeparatedList(
+                            SyntaxFactory.Argument(memberAccess))));
+
+            // Replace the existing expression
+            _editor.ReplaceNode(node.Right, newExpression);
+        }
+
+        base.VisitAssignmentExpression(node);
+    }
+
+    public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
+    {
+        // Check for the pattern string x = m.x;
+        var declaration = node.Declaration;
+        if (declaration.Type is PredefinedTypeSyntax predefinedType &&
+            predefinedType.Keyword.IsKind(SyntaxKind.StringKeyword))
+        {
+            foreach (var variable in declaration.Variables)
+            {
+                if (variable.Initializer?.Value is MemberAccessExpressionSyntax memberAccess)
+                {
+                    // Create the replacement code: new MyString(m.x)
+                    var newExpression = SyntaxFactory.ObjectCreationExpression(
+                            SyntaxFactory.IdentifierName("MyString"))
+                        .WithArgumentList(
+                            SyntaxFactory.ArgumentList(
+                                SyntaxFactory.SingletonSeparatedList(
+                                    SyntaxFactory.Argument(memberAccess))));
+
+                    // Replace the initializer
+                    _editor.ReplaceNode(variable.Initializer.Value, newExpression);
+                }
+            }
+        }
+
+        base.VisitLocalDeclarationStatement(node);
+    }
+}
+
+
+
