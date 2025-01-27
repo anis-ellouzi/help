@@ -1,0 +1,84 @@
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.MSBuild;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        string solutionPath = @"path\to\your\solution.sln"; // Update with your solution path
+
+        using var workspace = MSBuildWorkspace.Create();
+        var solution = await workspace.OpenSolutionAsync(solutionPath);
+
+        // Specify the class and property name
+        const string className = "YourClassName";
+        const string propertyName = "x";
+
+        foreach (var project in solution.Projects)
+        {
+            foreach (var document in project.Documents)
+            {
+                var semanticModel = await document.GetSemanticModelAsync();
+                if (semanticModel == null) continue;
+
+                var root = await document.GetSyntaxRootAsync();
+                if (root == null) continue;
+
+                // Find the target class and property
+                var classDeclaration = root.DescendantNodes()
+                    .OfType<ClassDeclarationSyntax>()
+                    .FirstOrDefault(c => c.Identifier.Text == className);
+
+                if (classDeclaration == null) continue;
+
+                var propertyDeclaration = classDeclaration.Members
+                    .OfType<PropertyDeclarationSyntax>()
+                    .FirstOrDefault(p => p.Identifier.Text == propertyName &&
+                                         p.Type.ToString() == "string");
+
+                if (propertyDeclaration == null) continue;
+
+                // Get the symbol for the property
+                var propertySymbol = semanticModel.GetDeclaredSymbol(propertyDeclaration);
+                if (propertySymbol == null) continue;
+
+                // Find references to the property
+                var references = await SymbolFinder.FindReferencesAsync(propertySymbol, solution);
+                foreach (var reference in references)
+                {
+                    foreach (var location in reference.Locations)
+                    {
+                        var referenceNode = root.FindNode(location.Location.SourceSpan);
+
+                        // Check if it's an assignment
+                        if (referenceNode.Parent is AssignmentExpressionSyntax assignment)
+                        {
+                            var newRightHandSide = SyntaxFactory.ObjectCreationExpression(
+                                SyntaxFactory.IdentifierName("MyString"))
+                                .WithArgumentList(SyntaxFactory.ArgumentList(
+                                    SyntaxFactory.SingletonSeparatedList(
+                                        SyntaxFactory.Argument(assignment.Right))));
+
+                            var newAssignment = assignment.WithRight(newRightHandSide);
+
+                            // Replace the old assignment
+                            root = root.ReplaceNode(assignment, newAssignment);
+                        }
+                    }
+                }
+
+                // Save the updated document
+                var updatedDocument = document.WithSyntaxRoot(root);
+                workspace.TryApplyChanges(updatedDocument.Project.Solution);
+            }
+        }
+
+        Console.WriteLine("Completed updating assignments.");
+    }
+}
