@@ -1,0 +1,117 @@
+using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+
+public class ApiDefinitionHelper
+{
+    public string GenerateApiJsonDefinition(Assembly assembly)
+    {
+        var controllers = assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(ControllerBase)));
+
+        var apiDefinition = new
+        {
+            openapi = "3.0.0",
+            info = new
+            {
+                title = "Sample API",
+                version = "1.0.0",
+            },
+            paths = new Dictionary<string, object>()
+        };
+
+        foreach (var controller in controllers)
+        {
+            var routeAttribute = controller.GetCustomAttribute<RouteAttribute>();
+            if (routeAttribute == null) continue;
+
+            var baseRoute = routeAttribute.Template;
+            var methods = controller.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                .Where(m => m.DeclaringType == controller && m.IsPublic && !m.IsSpecialName);
+
+            foreach (var method in methods)
+            {
+                var httpMethod = GetHttpMethod(method);
+                if (httpMethod == null) continue;
+
+                var pathTemplate = $"{baseRoute}/{method.Name}";
+                var pathDefinition = new Dictionary<string, object>
+                {
+                    { "summary", method.Name },
+                    { "operationId", method.Name },
+                    { "responses", GetResponseDefinitions(method) },
+                    { "parameters", GetParameters(method) }
+                };
+
+                if (!apiDefinition.paths.ContainsKey(pathTemplate))
+                {
+                    apiDefinition.paths[pathTemplate] = new Dictionary<string, object>();
+                }
+
+                var pathOperations = (Dictionary<string, object>)apiDefinition.paths[pathTemplate];
+                pathOperations[httpMethod] = pathDefinition;
+            }
+        }
+
+        return JsonSerializer.Serialize(apiDefinition, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private string GetHttpMethod(MethodInfo method)
+    {
+        if (method.GetCustomAttribute<HttpGetAttribute>() != null)
+            return "get";
+        if (method.GetCustomAttribute<HttpPostAttribute>() != null)
+            return "post";
+        if (method.GetCustomAttribute<HttpPutAttribute>() != null)
+            return "put";
+        if (method.GetCustomAttribute<HttpDeleteAttribute>() != null)
+            return "delete";
+
+        return null;
+    }
+
+    private List<object> GetParameters(MethodInfo method)
+    {
+        var parameters = new List<object>();
+        foreach (var param in method.GetParameters())
+        {
+            var parameterDefinition = new
+            {
+                name = param.Name,
+                in_ = param.ParameterType == typeof(IFormFile) ? "formData" : "body", // example for form data
+                required = true,
+                schema = new
+                {
+                    type = param.ParameterType.Name.ToLower()
+                }
+            };
+
+            parameters.Add(parameterDefinition);
+        }
+        return parameters;
+    }
+
+    private object GetResponseDefinitions(MethodInfo method)
+    {
+        return new
+        {
+            "200" = new
+            {
+                description = "Successful response",
+                content = new
+                {
+                    application_json = new
+                    {
+                        schema = new { type = "object" }
+                    }
+                }
+            },
+            "400" = new
+            {
+                description = "Bad Request"
+            }
+        };
+    }
+}
