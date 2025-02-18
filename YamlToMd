@@ -1,0 +1,134 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+
+namespace YamlToMarkdown
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            string yamlFilePath = "path_to_your_openapi.yaml"; // Path to your NSwag YAML file
+            string markdownOutputPath = "README.md"; // Output path for the generated markdown file
+
+            // Read the YAML file (as text)
+            string yamlContent = File.ReadAllText(yamlFilePath);
+
+            // Process the YAML content into a structured object (basic parsing)
+            var apiSpec = ParseYamlToDictionary(yamlContent);
+
+            // Create the markdown content
+            StringBuilder markdownContent = new StringBuilder();
+
+            // Adding API info
+            if (apiSpec.ContainsKey("info"))
+            {
+                var info = apiSpec["info"] as Dictionary<string, object>;
+                markdownContent.AppendLine("# API Documentation");
+                markdownContent.AppendLine();
+                markdownContent.AppendLine("## API Info");
+                markdownContent.AppendLine($"**Title:** {info["title"]}");
+                markdownContent.AppendLine($"**Version:** {info["version"]}");
+                markdownContent.AppendLine($"**Description:** {info["description"]}");
+                markdownContent.AppendLine();
+            }
+
+            // Process paths (endpoints)
+            if (apiSpec.ContainsKey("paths"))
+            {
+                var paths = apiSpec["paths"] as Dictionary<string, object>;
+                markdownContent.AppendLine("## Endpoints");
+                foreach (var path in paths)
+                {
+                    string pathUrl = path.Key;
+                    markdownContent.AppendLine($"### {pathUrl}");
+
+                    var operations = path.Value as Dictionary<string, object>;
+                    foreach (var operation in operations)
+                    {
+                        string method = operation.Key.ToUpper(); // GET, POST, etc.
+                        var operationDetails = operation.Value as Dictionary<string, object>;
+
+                        markdownContent.AppendLine($"- **Method**: {method}");
+
+                        if (operationDetails.ContainsKey("summary"))
+                        {
+                            markdownContent.AppendLine($"  - **Summary**: {operationDetails["summary"]}");
+                        }
+
+                        // Process parameters
+                        if (operationDetails.ContainsKey("parameters"))
+                        {
+                            markdownContent.AppendLine("  - **Parameters**:");
+                            var parameters = operationDetails["parameters"] as List<object>;
+                            foreach (var param in parameters)
+                            {
+                                var paramDict = param as Dictionary<string, object>;
+                                markdownContent.AppendLine($"    - **{paramDict["name"]}**: {paramDict["description"] ?? "No description"} (Type: {paramDict["type"]})");
+                            }
+                        }
+
+                        // Process responses
+                        if (operationDetails.ContainsKey("responses"))
+                        {
+                            markdownContent.AppendLine("  - **Responses**:");
+                            var responses = operationDetails["responses"] as Dictionary<string, object>;
+                            foreach (var response in responses)
+                            {
+                                var responseDetails = response.Value as Dictionary<string, object>;
+                                markdownContent.AppendLine($"    - **{response.Key}**: {responseDetails["description"] ?? "No description"}");
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Write the markdown to a file
+            File.WriteAllText(markdownOutputPath, markdownContent.ToString());
+            Console.WriteLine("README.md has been generated!");
+        }
+
+        // Basic YAML parsing (converting YAML structure into Dictionary)
+        static Dictionary<string, object> ParseYamlToDictionary(string yamlContent)
+        {
+            var result = new Dictionary<string, object>();
+            var lines = yamlContent.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            string currentKey = null;
+            var currentValue = new StringBuilder();
+
+            foreach (var line in lines)
+            {
+                // Handle the basic key-value structure, assuming simple YAML format
+                var trimmedLine = line.Trim();
+                if (trimmedLine.StartsWith("-"))
+                {
+                    // Handle lists (e.g., parameters, responses)
+                    currentValue.AppendLine(trimmedLine.Substring(1).Trim());
+                }
+                else if (trimmedLine.Contains(":"))
+                {
+                    // Found key-value pair
+                    if (currentKey != null)
+                    {
+                        result[currentKey] = currentValue.ToString().Trim();
+                        currentValue.Clear();
+                    }
+
+                    var parts = trimmedLine.Split(new[] { ':' }, 2);
+                    currentKey = parts[0].Trim();
+                    currentValue.AppendLine(parts.Length > 1 ? parts[1].Trim() : string.Empty);
+                }
+            }
+
+            // Save last key-value pair
+            if (currentKey != null)
+            {
+                result[currentKey] = currentValue.ToString().Trim();
+            }
+
+            return result;
+        }
+    }
+}
