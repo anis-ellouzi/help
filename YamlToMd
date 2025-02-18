@@ -3,155 +3,89 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace YamlToMarkdown
+class OpenApiModel
 {
-    class Program
+    public string Version { get; set; }
+    public string Title { get; set; }
+    public Dictionary<string, string> Paths { get; set; }
+    public Dictionary<string, string> Definitions { get; set; }
+    
+    public OpenApiModel()
     {
-        static void Main(string[] args)
-        {
-            string yamlFilePath = "path_to_your_openapi.yaml"; // Path to your NSwag YAML file
-            string markdownOutputPath = "README.md"; // Output path for the generated markdown file
-
-            // Read the YAML file (as text)
-            string yamlContent = File.ReadAllText(yamlFilePath);
-
-            // Process the YAML content into a structured object (basic parsing)
-            var apiSpec = ParseYamlToDictionary(yamlContent);
-
-            // Create the markdown content
-            StringBuilder markdownContent = new StringBuilder();
-
-            // Adding API info
-            if (apiSpec.ContainsKey("info"))
-            {
-                var info = apiSpec["info"] as Dictionary<string, object>;
-                markdownContent.AppendLine("# API Documentation");
-                markdownContent.AppendLine();
-                markdownContent.AppendLine("## API Info");
-                markdownContent.AppendLine($"**Title:** {info["title"]}");
-                markdownContent.AppendLine($"**Version:** {info["version"]}");
-                markdownContent.AppendLine($"**Description:** {info["description"]}");
-                markdownContent.AppendLine();
-            }
-
-            // Process paths (endpoints)
-            if (apiSpec.ContainsKey("paths"))
-            {
-                var paths = apiSpec["paths"] as Dictionary<string, object>;
-                markdownContent.AppendLine("## Endpoints");
-                foreach (var path in paths)
-                {
-                    string pathUrl = path.Key;
-                    markdownContent.AppendLine($"### {pathUrl}");
-
-                    var operations = path.Value as Dictionary<string, object>;
-                    foreach (var operation in operations)
-                    {
-                        string method = operation.Key.ToUpper(); // GET, POST, etc.
-                        var operationDetails = operation.Value as Dictionary<string, object>;
-
-                        markdownContent.AppendLine($"- **Method**: {method}");
-
-                        if (operationDetails.ContainsKey("summary"))
-                        {
-                            markdownContent.AppendLine($"  - **Summary**: {operationDetails["summary"]}");
-                        }
-
-                        // Process parameters
-                        if (operationDetails.ContainsKey("parameters"))
-                        {
-                            markdownContent.AppendLine("  - **Parameters**:");
-                            var parameters = operationDetails["parameters"] as List<object>;
-                            foreach (var param in parameters)
-                            {
-                                var paramDict = param as Dictionary<string, object>;
-                                markdownContent.AppendLine($"    - **{paramDict["name"]}**: {paramDict["description"] ?? "No description"} (Type: {paramDict["type"]})");
-                            }
-                        }
-
-                        // Process responses
-                        if (operationDetails.ContainsKey("responses"))
-                        {
-                            markdownContent.AppendLine("  - **Responses**:");
-                            var responses = operationDetails["responses"] as Dictionary<string, object>;
-                            foreach (var response in responses)
-                            {
-                                var responseDetails = response.Value as Dictionary<string, object>;
-                                markdownContent.AppendLine($"    - **{response.Key}**: {responseDetails["description"] ?? "No description"}");
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Write the markdown to a file
-            File.WriteAllText(markdownOutputPath, markdownContent.ToString());
-            Console.WriteLine("README.md has been generated!");
-        }
-
-        // Parse YAML by spaces to detect levels and build nested dictionaries
-        static Dictionary<string, object> ParseYamlToDictionary(string yamlContent)
-        {
-            var result = new Dictionary<string, object>();
-            var lines = yamlContent.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            var stack = new Stack<Dictionary<string, object>>(); // Stack to handle nested structures
-            stack.Push(result); // Push the root level dictionary onto the stack
-
-            string currentKey = null;
-            int currentLevel = 0;
-
-            foreach (var line in lines)
-            {
-                string trimmedLine = line.Trim();
-                if (string.IsNullOrEmpty(trimmedLine)) continue;
-
-                int indentLevel = line.Length - trimmedLine.Length; // Calculate indentation level (number of spaces)
-                if (indentLevel > currentLevel)
-                {
-                    // We're going deeper into a nested structure
-                    var newDict = new Dictionary<string, object>();
-                    stack.Peek()[currentKey] = newDict;
-                    stack.Push(newDict);
-                }
-                else if (indentLevel < currentLevel)
-                {
-                    // We're going up in the structure
-                    for (int i = 0; i < currentLevel - indentLevel; i++)
-                    {
-                        stack.Pop(); // Pop the stack to go up a level
-                    }
-                }
-
-                if (trimmedLine.Contains(":"))
-                {
-                    // Key-value pair detected (or array element)
-                    var parts = trimmedLine.Split(new[] { ':' }, 2);
-                    currentKey = parts[0].Trim();
-                    var value = parts.Length > 1 ? parts[1].Trim() : null;
-
-                    if (value == null)
-                    {
-                        // Empty value, which means it's likely going to hold nested data (like a list or object)
-                        stack.Peek()[currentKey] = new List<object>();
-                    }
-                    else
-                    {
-                        // Normal key-value assignment
-                        stack.Peek()[currentKey] = value;
-                    }
-                }
-                else
-                {
-                    // Handle list item (e.g., "- item" in YAML)
-                    stack.Peek()[currentKey] = stack.Peek()[currentKey] ?? new List<object>();
-                    (stack.Peek()[currentKey] as List<object>)?.Add(trimmedLine);
-                }
-
-                // Update current level
-                currentLevel = indentLevel;
-            }
-
-            return result;
-        }
+        Paths = new Dictionary<string, string>();
+        Definitions = new Dictionary<string, string>();
     }
 }
+
+class OpenApiParser
+{
+    public OpenApiModel Parse(string yamlContent)
+    {
+        var lines = yamlContent.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var openApiModel = new OpenApiModel();
+
+        string currentKey = "";
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.Trim();
+            if (trimmedLine.StartsWith("openapi:"))
+            {
+                openApiModel.Version = trimmedLine.Substring(8).Trim();
+            }
+            else if (trimmedLine.StartsWith("info:"))
+            {
+                currentKey = "info";
+            }
+            else if (trimmedLine.StartsWith("title:") && currentKey == "info")
+            {
+                openApiModel.Title = trimmedLine.Substring(6).Trim();
+            }
+            else if (trimmedLine.StartsWith("paths:"))
+            {
+                currentKey = "paths";
+            }
+            else if (currentKey == "paths" && trimmedLine.Contains(":"))
+            {
+                var pathData = trimmedLine.Split(new[] { ':' }, 2);
+                openApiModel.Paths[pathData[0].Trim()] = pathData[1].Trim();
+            }
+            else if (trimmedLine.StartsWith("definitions:"))
+            {
+                currentKey = "definitions";
+            }
+            else if (currentKey == "definitions" && trimmedLine.Contains(":"))
+            {
+                var definitionData = trimmedLine.Split(new[] { ':' }, 2);
+                openApiModel.Definitions[definitionData[0].Trim()] = definitionData[1].Trim();
+            }
+        }
+
+        return openApiModel;
+    }
+}
+
+class MarkdownExporter
+{
+    public string ExportToMarkdown(OpenApiModel model)
+    {
+        var sb = new StringBuilder();
+        
+        sb.AppendLine($"# {model.Title}");
+        sb.AppendLine($"OpenAPI Version: {model.Version}");
+        
+        sb.AppendLine("\n## Paths");
+        foreach (var path in model.Paths)
+        {
+            sb.AppendLine($"- **{path.Key}**: {path.Value}");
+        }
+        
+        sb.AppendLine("\n## Definitions");
+        foreach (var definition in model.Definitions)
+        {
+            sb.AppendLine($"- **{definition.Key}**: {definition.Value}");
+        }
+
+        return sb.ToString();
+    }
+}
+
