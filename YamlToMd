@@ -89,43 +89,66 @@ namespace YamlToMarkdown
             Console.WriteLine("README.md has been generated!");
         }
 
-        // Basic YAML parsing (converting YAML structure into Dictionary)
+        // Parse YAML by spaces to detect levels and build nested dictionaries
         static Dictionary<string, object> ParseYamlToDictionary(string yamlContent)
         {
             var result = new Dictionary<string, object>();
             var lines = yamlContent.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            var stack = new Stack<Dictionary<string, object>>(); // Stack to handle nested structures
+            stack.Push(result); // Push the root level dictionary onto the stack
 
             string currentKey = null;
-            var currentValue = new StringBuilder();
+            int currentLevel = 0;
 
             foreach (var line in lines)
             {
-                // Handle the basic key-value structure, assuming simple YAML format
-                var trimmedLine = line.Trim();
-                if (trimmedLine.StartsWith("-"))
-                {
-                    // Handle lists (e.g., parameters, responses)
-                    currentValue.AppendLine(trimmedLine.Substring(1).Trim());
-                }
-                else if (trimmedLine.Contains(":"))
-                {
-                    // Found key-value pair
-                    if (currentKey != null)
-                    {
-                        result[currentKey] = currentValue.ToString().Trim();
-                        currentValue.Clear();
-                    }
+                string trimmedLine = line.Trim();
+                if (string.IsNullOrEmpty(trimmedLine)) continue;
 
+                int indentLevel = line.Length - trimmedLine.Length; // Calculate indentation level (number of spaces)
+                if (indentLevel > currentLevel)
+                {
+                    // We're going deeper into a nested structure
+                    var newDict = new Dictionary<string, object>();
+                    stack.Peek()[currentKey] = newDict;
+                    stack.Push(newDict);
+                }
+                else if (indentLevel < currentLevel)
+                {
+                    // We're going up in the structure
+                    for (int i = 0; i < currentLevel - indentLevel; i++)
+                    {
+                        stack.Pop(); // Pop the stack to go up a level
+                    }
+                }
+
+                if (trimmedLine.Contains(":"))
+                {
+                    // Key-value pair detected (or array element)
                     var parts = trimmedLine.Split(new[] { ':' }, 2);
                     currentKey = parts[0].Trim();
-                    currentValue.AppendLine(parts.Length > 1 ? parts[1].Trim() : string.Empty);
-                }
-            }
+                    var value = parts.Length > 1 ? parts[1].Trim() : null;
 
-            // Save last key-value pair
-            if (currentKey != null)
-            {
-                result[currentKey] = currentValue.ToString().Trim();
+                    if (value == null)
+                    {
+                        // Empty value, which means it's likely going to hold nested data (like a list or object)
+                        stack.Peek()[currentKey] = new List<object>();
+                    }
+                    else
+                    {
+                        // Normal key-value assignment
+                        stack.Peek()[currentKey] = value;
+                    }
+                }
+                else
+                {
+                    // Handle list item (e.g., "- item" in YAML)
+                    stack.Peek()[currentKey] = stack.Peek()[currentKey] ?? new List<object>();
+                    (stack.Peek()[currentKey] as List<object>)?.Add(trimmedLine);
+                }
+
+                // Update current level
+                currentLevel = indentLevel;
             }
 
             return result;
