@@ -1,0 +1,95 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        // Specify the path to the YAML file
+        string yamlFilePath = "sample.yaml";
+
+        // Read and parse the YAML file into a tree object
+        var yamlTree = ReadYamlToTree(yamlFilePath);
+
+        // Print the tree structure
+        PrintTree(yamlTree, "");
+    }
+
+    // Method to read a YAML file and convert it to a tree object
+    public static Dictionary<string, object> ReadYamlToTree(string filePath)
+    {
+        var yamlLines = File.ReadAllLines(filePath);
+        var tree = new Dictionary<string, object>();
+        var currentKey = string.Empty;
+        var currentDictionary = tree;
+        var stack = new Stack<Dictionary<string, object>>();
+
+        foreach (var line in yamlLines)
+        {
+            var trimmedLine = line.Trim();
+            if (string.IsNullOrEmpty(trimmedLine))
+                continue;
+
+            int indentLevel = line.TakeWhile(c => c == ' ').Count() / 2; // Assuming 2 spaces per indentation
+
+            if (indentLevel == 0)
+            {
+                // Top-level key-value pair
+                if (trimmedLine.Contains(":"))
+                {
+                    var parts = trimmedLine.Split(':');
+                    var key = parts[0].Trim();
+                    var value = parts[1].Trim();
+
+                    currentDictionary[key] = value;
+                }
+                else
+                {
+                    // This might be a list or nested structure
+                    var key = trimmedLine;
+                    currentDictionary[key] = new List<object>();
+                    currentKey = key;
+                }
+            }
+            else
+            {
+                // Nested key-value pair
+                if (trimmedLine.Contains(":"))
+                {
+                    var parts = trimmedLine.Split(':');
+                    var key = parts[0].Trim();
+                    var value = parts[1].Trim();
+
+                    currentDictionary[currentKey] = new Dictionary<string, object> { { key, value } };
+                }
+                else
+                {
+                    var nestedKey = trimmedLine;
+                    currentDictionary[nestedKey] = new Dictionary<string, object>();
+                    stack.Push(currentDictionary);
+                    currentDictionary = (Dictionary<string, object>)currentDictionary[nestedKey];
+                }
+            }
+        }
+        return tree;
+    }
+
+    // Method to recursively print the tree structure
+    public static void PrintTree(Dictionary<string, object> node, string indent)
+    {
+        foreach (var kvp in node)
+        {
+            Console.WriteLine($"{indent}{kvp.Key}: ");
+            if (kvp.Value is Dictionary<string, object> nestedNode)
+            {
+                PrintTree(nestedNode, indent + "  ");
+            }
+            else
+            {
+                Console.WriteLine($"{indent}  {kvp.Value}");
+            }
+        }
+    }
+}
