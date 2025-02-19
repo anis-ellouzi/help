@@ -1,30 +1,90 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+
+public class OpenApiSpec
+{
+    public string Openapi { get; set; }
+    public Info Info { get; set; }
+    public Dictionary<string, PathItem> Paths { get; set; }
+    public Components Components { get; set; }
+}
+
+public class Info
+{
+    public string Title { get; set; }
+    public string Description { get; set; }
+    public string Version { get; set; }
+}
+
+public class PathItem
+{
+    public Operation Get { get; set; }
+    public Operation Post { get; set; }
+    // Add other HTTP methods like PUT, DELETE, etc. as needed.
+}
+
+public class Operation
+{
+    public string Summary { get; set; }
+    public Dictionary<string, Response> Responses { get; set; }
+}
+
+public class Response
+{
+    public string Description { get; set; }
+    public Content Content { get; set; }
+}
+
+public class Content
+{
+    public Schema Schema { get; set; }
+}
+
+public class Schema
+{
+    public string Type { get; set; }
+    public Items Items { get; set; }
+    public Dictionary<string, Property> Properties { get; set; }
+}
+
+public class Items
+{
+    public string Type { get; set; }
+}
+
+public class Property
+{
+    public string Type { get; set; }
+}
+
+public class Components
+{
+    public Dictionary<string, Schema> Schemas { get; set; }
+}
 
 public class Program
 {
     public static void Main(string[] args)
     {
-        // Specify the path to the YAML file
-        string yamlFilePath = "sample.yaml";
+        // Specify the path to the Swagger YAML file
+        string yamlFilePath = "openapi.yaml";
 
-        // Read and parse the YAML file into a tree object
-        var yamlTree = ReadYamlToTree(yamlFilePath);
+        // Read and parse the YAML file into an OpenApiSpec object
+        var openApiSpec = ReadYamlToObject(yamlFilePath);
 
-        // Print the tree structure
-        PrintTree(yamlTree, "");
+        // Print the OpenAPI specification
+        PrintObject(openApiSpec, "");
     }
 
-    // Method to read a YAML file and convert it to a tree object
-    public static Dictionary<string, object> ReadYamlToTree(string filePath)
+    // Method to read a YAML file and convert it to an OpenApiSpec object
+    public static OpenApiSpec ReadYamlToObject(string filePath)
     {
         var yamlLines = File.ReadAllLines(filePath);
-        var tree = new Dictionary<string, object>();
-        var currentKey = string.Empty;
-        var currentDictionary = tree;
-        var stack = new Stack<Dictionary<string, object>>();
+        var currentObject = new OpenApiSpec();
+        var currentPathItem = new PathItem();
+        var currentOperation = new Operation();
+        var stack = new Stack<object>();
 
         foreach (var line in yamlLines)
         {
@@ -43,14 +103,24 @@ public class Program
                     var key = parts[0].Trim();
                     var value = parts[1].Trim();
 
-                    currentDictionary[key] = value;
-                }
-                else
-                {
-                    // This might be a list or nested structure
-                    var key = trimmedLine;
-                    currentDictionary[key] = new List<object>();
-                    currentKey = key;
+                    // Check for special keys
+                    switch (key)
+                    {
+                        case "openapi":
+                            currentObject.Openapi = value;
+                            break;
+                        case "info":
+                            currentObject.Info = new Info();
+                            stack.Push(currentObject.Info);
+                            break;
+                        case "paths":
+                            currentObject.Paths = new Dictionary<string, PathItem>();
+                            break;
+                        case "components":
+                            currentObject.Components = new Components();
+                            stack.Push(currentObject.Components);
+                            break;
+                    }
                 }
             }
             else
@@ -62,33 +132,57 @@ public class Program
                     var key = parts[0].Trim();
                     var value = parts[1].Trim();
 
-                    currentDictionary[currentKey] = new Dictionary<string, object> { { key, value } };
-                }
-                else
-                {
-                    var nestedKey = trimmedLine;
-                    currentDictionary[nestedKey] = new Dictionary<string, object>();
-                    stack.Push(currentDictionary);
-                    currentDictionary = (Dictionary<string, object>)currentDictionary[nestedKey];
+                    if (stack.Peek() is Info info)
+                    {
+                        if (key == "title") info.Title = value;
+                        else if (key == "description") info.Description = value;
+                        else if (key == "version") info.Version = value;
+                    }
+
+                    if (stack.Peek() is Components components)
+                    {
+                        if (key == "schemas")
+                        {
+                            components.Schemas = new Dictionary<string, Schema>();
+                        }
+                    }
+
+                    if (stack.Peek() is PathItem pathItem)
+                    {
+                        if (key == "get")
+                        {
+                            pathItem.Get = new Operation();
+                            stack.Push(pathItem.Get);
+                        }
+                    }
+
+                    if (stack.Peek() is Operation operation)
+                    {
+                        if (key == "summary") operation.Summary = value;
+                    }
                 }
             }
         }
-        return tree;
+
+        return currentObject;
     }
 
-    // Method to recursively print the tree structure
-    public static void PrintTree(Dictionary<string, object> node, string indent)
+    // Method to recursively print the object (OpenApiSpec)
+    public static void PrintObject(object obj, string indent)
     {
-        foreach (var kvp in node)
+        if (obj == null) return;
+
+        foreach (var property in obj.GetType().GetProperties())
         {
-            Console.WriteLine($"{indent}{kvp.Key}: ");
-            if (kvp.Value is Dictionary<string, object> nestedNode)
+            var value = property.GetValue(obj);
+            if (value is string)
             {
-                PrintTree(nestedNode, indent + "  ");
+                Console.WriteLine($"{indent}{property.Name}: {value}");
             }
             else
             {
-                Console.WriteLine($"{indent}  {kvp.Value}");
+                Console.WriteLine($"{indent}{property.Name}: ");
+                PrintObject(value, indent + "  ");
             }
         }
     }
